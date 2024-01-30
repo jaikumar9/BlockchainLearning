@@ -1,59 +1,40 @@
-import React, { useEffect, useState } from 'react';
-import io from 'socket.io-client';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-
-const socket = io('http://localhost:3000'); // Update with your server URL
 
 function App() {
   const [transactions, setTransactions] = useState([]);
 
   useEffect(() => {
-    // Listen for newTransactions event from the server
-    socket.on('newTransactions', (newTransactions) => {
-      setTransactions(newTransactions);
-    });
+    const fetchTransactions = async () => {
+      try {
+        const response = await axios.get('http://localhost:3001/transactions');
+        setTransactions(response.data);
+      } catch (error) {
+        console.error('Error fetching transactions:', error.message);
+      }
+    };
 
-    // Cleanup the socket connection when component unmounts
-    return () => socket.disconnect();
+    fetchTransactions();
   }, []);
 
-  const checkTransactions = async () => {
-    try {
-      // Call the backend to check for new transactions
-      const response = await axios.get('http://localhost:3000/checkTransactions');
-      console.log(response.data);
-    } catch (error) {
-      console.error('Error checking transactions:', error.message);
-    }
-  };
-
-  const startAutoCheck = () => {
-    // Check transactions initially
-    checkTransactions();
-
-    // Set up interval to check transactions every 5 seconds (adjust as needed)
-    const intervalId = setInterval(() => {
-      checkTransactions();
-    }, 5000); // 5000 milliseconds = 5 seconds
-
-    // Cleanup the interval when the component unmounts
-    return () => clearInterval(intervalId);
-  };
-
   return (
-    <div className="App">
-      <h1>Transaction Monitor</h1>
-      <button onClick={startAutoCheck}>Start Auto Check</button>
-
-      <div id="transactions">
-        {transactions.map((tx, index) => (
-          <div key={index} className="transaction">
-            <strong>To:</strong> {tx.to}<br />
-            <strong>From:</strong> {tx.from}<br />
-            <strong>Value:</strong> {tx.value}<br />
-          </div>
+    <div>
+      <h1>Transaction List</h1>
+      <ul>
+        {transactions.map(transaction => (
+          <li key={transaction.hash}>
+            <strong>Hash:</strong> {transaction.hash}<br />
+            <strong>From:</strong> {transaction.from}<br />
+            <strong>To:</strong> {transaction.to}<br />
+            <strong>Value:</strong> {transaction.value}<br />
+            <strong>Gas Price:</strong> {transaction.gasPrice}<br />
+            <strong>Gas Used:</strong> {transaction.gasUsed}<br />
+            <strong>Block Number:</strong> {transaction.blockNumber}<br />
+            <strong>Timestamp:</strong> {transaction.timestamp}<br />
+            <hr />
+          </li>
         ))}
-      </div>
+      </ul>
     </div>
   );
 }
