@@ -1,85 +1,67 @@
-const express = require('express');
-const mongoose = require('mongoose');
 const axios = require('axios');
-const http = require('http');
-const socketIo = require('socket.io');
+const { MongoClient } = require('mongodb');
 
-const app = express();
-const server = http.createServer(app);
-const io = socketIo(server);
+const apiKey = 'KYNZ1UNJ4S3UD53NIG9TM98KUGJSAHSJVG';
+const address = '0x970eA4a7F0F0872B5aC888f00B82E07f2aC31799';
 
-const PORT = process.env.PORT || 3000;
+const formatValue = value => parseFloat(value).toFixed(5);
 
-// Connect to MongoDB
-mongoose.connect('mongodb://localhost:27017/StoreTDetails', { useNewUrlParser: true, useUnifiedTopology: true });
-const db = mongoose.connection;
-db.on('error', console.error.bind(console, 'MongoDB connection error:'));
-db.once('open', () => {
-  console.log('Connected to MongoDB');
-});
+const getMongoClient = async () => {
+  const client = new MongoClient('mongodb://localhost:27017', { useNewUrlParser: true, useUnifiedTopology: true });
+  await client.connect();
+  return client;
+};
 
-// Define a schema for transactions
-const transactionSchema = new mongoose.Schema({
-  to: String,
-  from: String,
-  value: String,
-});
+const insertTransaction = async (client, tx) => {
+  try {
+    const database = client.db('StoreTDetails');
+    const collection = database.collection('transactions');
+    await collection.insertOne({
+      hash: tx.hash,
+      from: tx.from,
+      to: tx.to,
+      value: formatValue(tx.value),
+      gasPrice: tx.gasPrice,
+      gasUsed: tx.gasUsed,
+      blockNumber: tx.blockNumber,                                   
+      timestamp: new Date(tx.timeStamp * 1000),
+    });
+    console.log('Transaction inserted:', tx.hash);
+  } catch (error) {
+    console.error('Error inserting transaction:', error.message);
+  }
+};
 
-// Create a model based on the schema
-const Transaction = mongoose.model('Transaction', transactionSchema);
-
-// Fixed Ethereum address to monitor
-const monitoredAddress = '0x970eA4a7F0F0872B5aC888f00B82E07f2aC31799';
-
-// Express route to check for new transactions
-app.get('/checkTransactions', async (req, res) => {
-  const apiKey = 'KYNZ1UNJ4S3UD53NIG9TM98KUGJSAHSJVG'; // Replace with your PolygonScan API key
+const getTransactions = async (address, page = 1) => {
+  const client = await getMongoClient();
 
   try {
-    // Call PolygonScan API to get transaction data for the fixed address
-    const response = await axios.get(`https://api.polygonscan.com/matic/mumbai/api?module=account&action=txlist&address=${monitoredAddress}&apikey=${apiKey}`);
+    const apiUrl =`https://api-mumbai.polygonscan.com/api?module=account&action=txlist&address=${address}&startblock=0&endblock=99999999&sort=asc&page=${page}&apikey=${apiKey}`;
+    const response = await axios.get(apiUrl);
 
-    const transactions = response.data.result;
+    if (response.data.status === '1') {
+      const transactions = response.data.result;
+      if (transactions.length > 0) {
+        for (const tx of transactions) {
+          await insertTransaction(client, tx);
+        }
 
-    // Save new transactions to MongoDB
-    for (const tx of transactions) {
-      const newTransaction = new Transaction({
-        to: tx.to,
-        from: tx.from,
-        value: tx.value,
-      });
-      await newTransaction.save();
+        // Check if there are more pages and fetch them
+        const nextPage = page + 1;
+        if (nextPage <= Math.ceil(response.data.result / 10)) {
+          await getTransactions(address, nextPage);
+        }
+      } else {
+        console.log('No transactions found for address:', address);
+      }
+    } else {
+      console.log('Error:', response.data.message);
     }
-
-    // Notify clients about new transactions using Socket.IO
-    io.emit('newTransactions', transactions);
-    console.log(transactions,'New transactions saved to the database');
-
-    res.json({ message: 'Transactions checked and saved to the database.' });
   } catch (error) {
-    console.error('Error checking transactions:', error.message);
-    res.status(500).json({ error: 'Internal Server Error' });
+    console.error('Error fetching transactions:', error.message);
+  } finally {
+    await client.close();
   }
-});
+};
 
-// Express route to get transaction data from the database
-app.get('/getTransactions', async (req, res) => {
-  try {
-    // Retrieve transaction data from MongoDB
-    const transactions = await Transaction.find({}).exec();
-    res.json({ transactions });
-  } catch (error) {
-    console.error('Error getting transactions from the database:', error.message);
-    res.status(500).json({ error: 'Internal Server Error' });
-  }
-});
-
-// Socket.IO connection event
-io.on('connection', (socket) => {
-  console.log('A client connected');
-});
-
-// Start the Express server
-server.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+getTransactions(address);
