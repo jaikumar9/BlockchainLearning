@@ -30,11 +30,35 @@ app.get('/transactions', async (req, res) => {
   }
 });
 
+// Endpoint to fetch a specific transaction by hash
+app.get('/transactions/:hash', async (req, res) => {
+  const { hash } = req.params;
+
+  try {
+    const client = await getMongoClient();
+    const database = client.db('StoreTDetails');
+    const collection = database.collection('transactions');
+
+    // Find the transaction by hash
+    const transaction = await collection.findOne({ hash });
+
+    if (transaction) {
+      res.json(transaction);
+    } else {
+      res.status(404).json({ error: 'Transaction not found' });
+    }
+
+    client.close();
+  } catch (error) {
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 app.get('/fetchAndStore', async (req, res) => {
   const apiKey = 'KYNZ1UNJ4S3UD53NIG9TM98KUGJSAHSJVG';
   const address = '0x970eA4a7F0F0872B5aC888f00B82E07f2aC31799';
 
-  const formatValue = value => parseFloat(value).toFixed(5);
+  const formatValue = (value) => parseFloat(value).toFixed(5);
   const client = await getMongoClient();
 
   try {
@@ -73,6 +97,28 @@ app.get('/fetchAndStore', async (req, res) => {
     res.json({ message: 'Transactions fetched and stored successfully.' });
   }
 });
+
+
+//search by the hash
+app.get('/transactions/:hash', async (req, res) => {
+  const { hash } = req.params;
+  try {
+    const client = await getMongoClient();
+    const database = client.db('StoreTDetails');
+    const collection = database.collection('transactions');
+    // Find the transaction by hash
+    const transaction = await collection.findOne({ hash });
+    if (transaction) {
+      res.json(transaction);
+    } else {
+      res.status(404).json({ error: 'Transaction not found' });
+    }
+    client.close();
+  } catch (error) {
+    res.status(500).json({ error: 'Internal Server Error' });
+  }
+});
+
 
 const PORT = 3001;
 app.listen(PORT, () => {
